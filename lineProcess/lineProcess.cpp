@@ -627,4 +627,87 @@ namespace lineProc
 
        return pointCloud;
     }
+
+    std::vector<cv::Vec4i> filterLines(const std::vector<cv::Vec4i> &lines,
+                                       const std::vector<std::pair<size_t, size_t>> &match,
+                                       const std::vector<bool> &mask) {
+
+       std::vector<cv::Vec4i> filteredLines;
+
+       for (size_t i = 0; i < match.size(); ++i)
+       {
+          if (mask[i])
+          {
+             filteredLines.push_back(lines[match[i].first]);
+          }
+       }
+       return filteredLines;
+    }
+
+    pcl::PointXYZ convertToPclPoint(const cv::Point3d &point) {
+       return {static_cast<float>(point.x), static_cast<float>(point.y), static_cast<float>(point.z)};
+    }
+
+    Eigen::Matrix4d computeTransformMatrix(
+            const std::vector<cv::Vec4i> &firstTrajectoryLhsLines,
+            const std::vector<cv::Vec4i> &firstTrajectoryRhsLines,
+            const std::vector<std::pair<size_t, size_t>> &firstTrajectoryLinesDMatch,
+            const std::vector<bool> &firstTrajectoryMask,
+            int firstTrajectoryLhsImageWidth,
+            int firstTrajectoryLhsImageHeight,
+            const std::vector<cv::Vec4i> &secondTrajectoryLhsLines,
+            const std::vector<cv::Vec4i> &secondTrajectoryRhsLines,
+            const std::vector<std::pair<size_t, size_t>> &secondTrajectoryLinesDMatch,
+            const std::vector<bool> &secondTrajectoryMask,
+            int secondTrajectoryLhsImageWidth,
+            int secondTrajectoryLhsImageHeight,
+            int approximateNumber
+    ) {
+
+       std::vector<std::vector<cv::Point3d>> firstScenePointCloud = lineProc::createPointCloud(
+               firstTrajectoryLhsLines,
+               firstTrajectoryRhsLines,
+               firstTrajectoryLinesDMatch,
+               firstTrajectoryMask,
+               4,
+               firstTrajectoryLhsImageWidth,
+               firstTrajectoryLhsImageHeight
+       );
+
+       std::vector<std::vector<cv::Point3d>> secondScenePointCloud = lineProc::createPointCloud(
+               secondTrajectoryLhsLines,
+               secondTrajectoryRhsLines,
+               secondTrajectoryLinesDMatch,
+               secondTrajectoryMask,
+               4,
+               secondTrajectoryLhsImageWidth,
+               secondTrajectoryLhsImageHeight
+       );
+
+       pcl::PointCloud<pcl::PointXYZ>::Ptr firstSceneTriangulatedPoints(new pcl::PointCloud<pcl::PointXYZ>);
+       pcl::PointCloud<pcl::PointXYZ>::Ptr secondSceneTriangulatedPoints(new pcl::PointCloud<pcl::PointXYZ>);
+
+       for (const auto &points: firstScenePointCloud)
+       {
+          for (const auto &point: points)
+             firstSceneTriangulatedPoints->push_back(lineProc::convertToPclPoint(point));
+       }
+       for (const auto &points: secondScenePointCloud)
+       {
+          for (const auto &point: points)
+             secondSceneTriangulatedPoints->push_back(lineProc::convertToPclPoint(point));
+       }
+
+       pcl::PointCloud<pcl::PointXYZ>::Ptr transformedCloud(new pcl::PointCloud<pcl::PointXYZ>);
+
+       pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
+
+       icp.setMaximumIterations(20);
+       icp.setInputSource(firstSceneTriangulatedPoints);
+       icp.setInputTarget(secondSceneTriangulatedPoints);
+       icp.align(*transformedCloud);
+
+       return icp.getFinalTransformation().cast<double>();
+
+    }
 }

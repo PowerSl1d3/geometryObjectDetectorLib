@@ -12,6 +12,11 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/visualization/pcl_visualizer.h>
+#include <pcl/registration/icp.h>
+
 namespace lineProc
 {
 
@@ -80,6 +85,28 @@ namespace lineProc
                                                            int numberOfApproximatePoints,
                                                            int imageWidth,
                                                            int imageHeight);
+
+    std::vector<cv::Vec4i> filterLines(const std::vector<cv::Vec4i> &lines,
+                                       const std::vector<std::pair<size_t, size_t>> &match,
+                                       const std::vector<bool> &mask);
+
+    pcl::PointXYZ convertToPclPoint(const cv::Point3d &point);
+
+    Eigen::Matrix4d computeTransformMatrix(
+            const std::vector<cv::Vec4i> &firstTrajectoryLhsLines,
+            const std::vector<cv::Vec4i> &firstTrajectoryRhsLines,
+            const std::vector<std::pair<size_t, size_t>> &firstTrajectoryLinesDMatch,
+            const std::vector<bool> &firstTrajectoryMask,
+            int firstTrajectoryLhsImageWidth,
+            int firstTrajectoryLhsImageHeight,
+            const std::vector<cv::Vec4i> &secondTrajectoryLhsLines,
+            const std::vector<cv::Vec4i> &secondTrajectoryRhsLines,
+            const std::vector<std::pair<size_t, size_t>> &secondTrajectoryLinesDMatch,
+            const std::vector<bool> &secondTrajectoryMask,
+            int secondTrajectoryLhsImageWidth,
+            int secondTrajectoryLhsImageHeight,
+            int approximateNumber = 4
+    );
 }
 
 #endif //GEOMETRYOBJECTDETECTORLIB_LINEPROCESS_H

@@ -109,4 +109,123 @@ namespace lineProc {
        os << "Current maxAngleDiff: " << static_cast<float>(maxAngleDiff) << '\n';
        os << "Current boundingRectangleThickness: " << static_cast<float>(boundingRectangleThickness) << '\n';
     }
+
+    std::optional<cv::Matx23d> findEssentialMatrix(const std::vector<cv::Vec4i>& lhsLines, const std::vector<cv::Vec4i>& rhsLines,
+                                                   const lineProc::lineGrouper& lg, double alpha) {
+       std::optional<cv::Matx23d> answer = std::nullopt;
+       cv::Matx23d zeroMatrix = cv::Matx23d::zeros();
+
+       cv::Matx23d firstWarpMat, secondWarpMat;
+
+       int distance = std::max(lhsLines.size(), rhsLines.size());
+
+       for (size_t i = 0; i < lhsLines.size(); ++i) {
+
+          std::vector<cv::Point2f> lhsLine = {cv::Point2f(0.0, 0.0), cv::Point2f(lhsLines[i][0], lhsLines[i][1]), cv::Point2f(lhsLines[i][2], lhsLines[i][3])};
+
+          for (size_t j = 0; j < rhsLines.size(); ++j) {
+
+             std::vector<cv::Point2f> rhsLeftOrientedLine = {cv::Point2f(0.0, 0.0), cv::Point2f(rhsLines[j][0], rhsLines[j][1]), cv::Point2f(rhsLines[j][2], rhsLines[j][3])};
+             std::vector<cv::Point2f> rhsRightOrientedLine = {cv::Point2f(0.0, 0.0), cv::Point2f(rhsLines[j][2], rhsLines[j][3]), cv::Point2f(rhsLines[j][0], rhsLines[j][1])};
+
+             firstWarpMat = cv::getAffineTransform(lhsLine, rhsLeftOrientedLine);
+             secondWarpMat = cv::getAffineTransform(lhsLine, rhsRightOrientedLine);
+
+             bool firstWarpMatIsZero = firstWarpMat == zeroMatrix;
+             bool secondWarpMatIsZero = secondWarpMat == zeroMatrix;
+
+             if (firstWarpMatIsZero and secondWarpMatIsZero) {
+                continue;
+             }
+
+             std::vector<cv::Vec4i> leftOrientedTranslatedLines, rightOrientedTranslatedLines;
+             leftOrientedTranslatedLines.reserve(lhsLines.size() + rhsLines.size());
+             rightOrientedTranslatedLines.reserve(lhsLines.size() + rhsLines.size());
+
+             float leftOrientedTranslatedLinesLength = 0.0f;
+             float rightOrientedTranslatedLinesLength = 0.0f;
+
+             for (size_t k = 0; k < lhsLines.size(); ++k) {
+
+                cv::Matx31d firstPoint(lhsLines[k][0], lhsLines[k][1], 1);
+                cv::Matx31d secondPoint(lhsLines[k][2], lhsLines[k][3], 1);
+
+                if (!firstWarpMatIsZero) {
+                   auto newFirstPoint = firstWarpMat * firstPoint;
+                   auto newSecondPoint = firstWarpMat * secondPoint;
+                   leftOrientedTranslatedLines.emplace_back(newFirstPoint(0), newFirstPoint(1), newSecondPoint(0), newSecondPoint(1));
+                   leftOrientedTranslatedLinesLength += lineProc::lineLength(cv::Vec4i(newFirstPoint(0), newFirstPoint(1), newSecondPoint(0), newSecondPoint(1)));
+                }
+
+                if (!secondWarpMatIsZero) {
+                   auto newFirstPoint = secondWarpMat * firstPoint;
+                   auto newSecondPoint = secondWarpMat * secondPoint;
+                   rightOrientedTranslatedLines.emplace_back(newFirstPoint(0), newFirstPoint(1), newSecondPoint(0), newSecondPoint(1));
+                   rightOrientedTranslatedLinesLength += lineProc::lineLength(cv::Vec4i(newFirstPoint(0), newFirstPoint(1), newSecondPoint(0), newSecondPoint(1)));
+                }
+             }
+
+             leftOrientedTranslatedLinesLength /= leftOrientedTranslatedLines.size();
+             rightOrientedTranslatedLinesLength /= rightOrientedTranslatedLines.size();
+
+             if (!firstWarpMatIsZero) {
+
+                int linesCountBefore = leftOrientedTranslatedLines.size();
+                leftOrientedTranslatedLines = lg.reduceLines(leftOrientedTranslatedLines);
+
+                if (linesCountBefore - static_cast<int>(leftOrientedTranslatedLines.size()) > 1) {
+                   firstWarpMatIsZero = true;
+                }
+
+                leftOrientedTranslatedLines.insert(leftOrientedTranslatedLines.end(), rhsLines.begin(), rhsLines.end());
+             }
+
+             if (!secondWarpMatIsZero) {
+
+                int linesCountBefore = rightOrientedTranslatedLines.size();
+                rightOrientedTranslatedLines = lg.reduceLines(rightOrientedTranslatedLines);
+
+                if (linesCountBefore - static_cast<int>(rightOrientedTranslatedLines.size()) > 1) {
+                   secondWarpMatIsZero = true;
+                }
+
+                rightOrientedTranslatedLines.insert(rightOrientedTranslatedLines.end(), rhsLines.begin(), rhsLines.end());
+             }
+
+             if (!firstWarpMatIsZero) {
+                std::vector<cv::Vec4i> leftOrientedLinesRes = lg.reduceLines(leftOrientedTranslatedLines);
+
+                float newLeftOrientedTranslatedLinesLength = 0.0f;
+                for (const auto& line: leftOrientedLinesRes) {
+                   newLeftOrientedTranslatedLinesLength += lineProc::lineLength(line);
+                }
+
+                newLeftOrientedTranslatedLinesLength /= leftOrientedLinesRes.size();
+
+                if (fabs(newLeftOrientedTranslatedLinesLength / leftOrientedTranslatedLinesLength) < 1.5f and
+                fabs(leftOrientedLinesRes.size() - std::min(lhsLines.size(), rhsLines.size())) / distance < alpha) {
+                   return firstWarpMat;
+                }
+             }
+
+             if (!secondWarpMatIsZero) {
+                std::vector<cv::Vec4i> rightOrientedLinesRes = lg.reduceLines(rightOrientedTranslatedLines);
+
+                float newRightOrientedTranslatedLinesLength = 0.0f;
+                for (const auto& line: rightOrientedLinesRes) {
+                   newRightOrientedTranslatedLinesLength += lineProc::lineLength(line);
+                }
+
+                newRightOrientedTranslatedLinesLength /= rightOrientedLinesRes.size();
+
+                if (fabs(newRightOrientedTranslatedLinesLength / rightOrientedTranslatedLinesLength) < 1.5f and
+                fabs(rightOrientedLinesRes.size() - std::min(lhsLines.size(), rhsLines.size())) / distance < alpha) {
+                   return secondWarpMat;
+                }
+             }
+
+          }
+       }
+       return std::nullopt;
+    }
 }

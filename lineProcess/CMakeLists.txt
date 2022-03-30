@@ -4,6 +4,7 @@ project(lineProcess)
 set(CMAKE_CXX_STANDARD 17)
 
 find_package(OpenCV REQUIRED)
+find_package(PCL REQUIRED)
 
 add_library(lineProcess SHARED
         lineProcess.cpp
@@ -13,4 +14,5 @@ add_library(lineProcess SHARED
 
 target_link_libraries(lineProcess
         ${OpenCV_LIBS}
+        ${PCL_LIBRARIES}
         pthread)

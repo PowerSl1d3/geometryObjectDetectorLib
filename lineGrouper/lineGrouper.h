@@ -41,6 +41,9 @@ namespace lineProc {
 
         void printParameters(std::ostream &os);
     };
+
+    std::optional<cv::Matx23d> findEssentialMatrix(const std::vector<cv::Vec4i>& lhsLines, const std::vector<cv::Vec4i>& rhsLines,
+                                                   const lineProc::lineGrouper& lg, double alpha=0.5);
 }
 
 #endif //GEOMETRYOBJECTDETECTORLIB_LINEGROUPER_H
